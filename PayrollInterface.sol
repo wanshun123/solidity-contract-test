@@ -1,7 +1,7 @@
-pragma solidity ^0.4.0;
-import "github.com/oraclize/ethereum-api/oraclizeAPI.sol";
+pragma solidity ^0.4.2;
 
-// when a token is added for an employee to be paid in, we'll try calling the totalSupply() function in its contract address to check if it's probably a ERC20 token. In the calculatePayrollRunwayIncludingAllTokens() function we can also check how many of those tokens this contract owns by calling balanceOf(), and when it comes time to pay an employee in an ERC20 token we'll also need to call transfer()
+import './usingOraclize.sol';
+
 interface ExternalToken {
     function totalSupply() constant returns (uint256);
     function balanceOf (address _owner) constant returns (uint256);
@@ -17,9 +17,9 @@ contract PayrollInterface is usingOraclize {
 
     function PayrollInterface() {
         owner = msg.sender;
-        allTokenSymbols[0] = "ETH";
-        allTokenSymbols[1] = "LTC";
-        allTokenSymbols[2] = "XRP";
+        allTokenSymbols.push("ETH");
+        allTokenSymbols.push("LTC");
+        allTokenSymbols.push("XRP");
     }
     
     modifier onlyOwner {
@@ -42,10 +42,12 @@ contract PayrollInterface is usingOraclize {
     // if the contract allowed an employee to set any token contract address to be paid in, an array of all the different token addresses that different employees have elected to be paid in would need to be maintained which would get cumbersome and there would be all kinds of issues (would have to validate if the contract address is for a legitimate ERC20 token, whether there is an exchange rate for it in Kraken, and whether those tokens can even be brought etc), for practical purposes there should just be a small list of token contract addresses that are allowed to be used. For this example setting a max of 3
     // ETH itself doesn't have a token contract address, for that this contract address can be entered, ie. address(this)
     
+    // for testing purposes allTokenAddresses[1] and allTokenAddresses[2] are token addresses for tokens called LTC and XRP that I've deployed on rinkeby
     address[] allTokenAddresses = [address(this), 0x0a6ebb3690b7983e470D3aBFB86636cf64925B98, 0x38206cAb32b67F33F07ac7df984127975120Ee09];
     
     // the bytes32[] array below is "ETH", "LTC" and "XRP" in bytes32 (these are added to this array in the constructor function when the contract is created), as commented below Solidity doesn't allow an array of strings so it has to be like this then converted to a string when needed
     bytes32[] public allTokenSymbols;
+    // bytes32[] public allTokenSymbols = ["0x4554480000000000000000000000000000000000000000000000000000000000", "0x4c54430000000000000000000000000000000000000000000000000000000000", "0x5852500000000000000000000000000000000000000000000000000000000000"];
     
     function bytes32ToString(bytes32 x) constant returns (string) {
     bytes memory bytesString = new bytes(32);
@@ -66,6 +68,7 @@ contract PayrollInterface is usingOraclize {
     
     // have to have the token symbols stored for when kraken is called to get the value of that token in Euro's, it's not guaranteed an ERC20 token will have a symbol of type string specified in its contract so let the owner state what the symbol is. Has to be an array of bytes32 which will then be converted to a string via the bytes32ToString() function, since Solidity doesn't allow an array of variable length strings
     // newAllowedTokenAddresses[0] would be the address for the token symbol _allTokenSymbols[0]
+    // would have to be very careful about changing allowed tokens after there are already employees created who are setup to be paid in different tokens, as paying them after that would fail
     function adjustAllowedTokenAddresses (address[] newAllowedTokenAddresses, bytes32[] _allTokenSymbols) onlyOwner {
         require(newAllowedTokenAddresses.length < 4);
         require(newAllowedTokenAddresses.length == _allTokenSymbols.length);
@@ -223,9 +226,16 @@ contract PayrollInterface is usingOraclize {
                 uint256 amountOfETHToTransfer = valueOfTokenInEuro / latestExchangeRate;
                 msg.sender.transfer(amountOfETHToTransfer);
             } else {
-                // TODO: get token symbol
-                string memory token;
-                setExchangeRate(token);
+                bytes32 tokenBytes32;
+                if (employees[employeeId].allowedTokens[i] == allTokenAddresses[0]) {
+                    tokenBytes32 = allTokenSymbols[0];
+                } else if (employees[employeeId].allowedTokens[i] == allTokenAddresses[1]) {
+                    tokenBytes32 = allTokenSymbols[1];
+                } else if (employees[employeeId].allowedTokens[i] == allTokenAddresses[2]) {
+                    tokenBytes32 = allTokenSymbols[2];
+                }
+                string memory tokenString = bytes32ToString(tokenBytes32);
+                setExchangeRate(tokenString);
                 uint256 amountOfTokenToTransfer = valueOfTokenInEuro / latestExchangeRate;
                 ExternalToken(allTokenAddresses[i]).transfer(msg.sender, amountOfTokenToTransfer);
             }
@@ -259,6 +269,8 @@ contract PayrollInterface is usingOraclize {
             oraclize_query("URL", strConcat("json(https://api.kraken.com/0/public/Ticker?pair=", symbol,"EUR).result.X", symbol,"ZEUR.c.0"));
         }
     }
+    
+    
     
     // function setExchangeRate (address token, uint256 EURExchangeRate); // uses decimals from token 
 
