@@ -11,15 +11,12 @@ interface ExternalToken {
 contract PayrollInterface is usingOraclize { 
     
     address owner;
-    uint private numberOfActiveEmployees;
-    uint private numberOfDeletedEmployees;
-    uint private totalYearlySalaries;
+    uint public numberOfActiveEmployees;
+    uint public numberOfDeletedEmployees;
+    uint public totalYearlySalaries;
 
     function PayrollInterface() {
         owner = msg.sender;
-        // allTokenSymbols.push("ETH");
-        // allTokenSymbols.push("LTC");
-        // allTokenSymbols.push("XRP");
     }
     
     modifier onlyOwner {
@@ -29,7 +26,6 @@ contract PayrollInterface is usingOraclize {
     
     struct Employee {
         address accountAddress;
-        address[] allowedTokens;
         uint256[] distribution;
         uint256 yearlyEURSalary;
         uint256 timeCreated;
@@ -39,7 +35,7 @@ contract PayrollInterface is usingOraclize {
     
     mapping (uint => Employee) private employees;
     
-    // if the contract allowed an employee to set any token contract address to be paid in, an array of all the different token addresses that different employees have elected to be paid in would need to be maintained which would get cumbersome and there would be all kinds of issues (would have to validate if the contract address is for a legitimate ERC20 token, whether there is an exchange rate for it in Kraken, and whether those tokens can even be brought etc), for practical purposes there should just be a small list of token contract addresses that are allowed to be used. For this example setting a max of 3
+    // if the contract allowed an employee to set any token contract address to be paid in there would be all kinds of issues (would have to validate if the contract address is for a legitimate ERC20 token, whether there is an exchange rate for it in Kraken, and whether those tokens can even be brought etc), for practical purposes there should just be a small list of token contract addresses set by the owner that are allowed to be used, then when setting how an employee is paid a simple distrubution[] array is kept that says what percent of employees pay goes to each token. For this example setting a max of 3 tokens
     // ETH itself doesn't have a token contract address, for that this contract address can be entered, ie. address(this)
     
     // for testing purposes allTokenAddresses[1] and allTokenAddresses[2] are token addresses for tokens called LTC and XRP that I've deployed on rinkeby
@@ -67,12 +63,11 @@ contract PayrollInterface is usingOraclize {
     
     // have to have the token symbols stored for when kraken is called to get the value of that token in Euro's, it's not guaranteed an ERC20 token will have a symbol of type string specified in its contract so let the owner state what the symbol is. Has to be an array of bytes32 which will then be converted to a string via the bytes32ToString() function, since Solidity doesn't allow an array of variable length strings
     // newAllowedTokenAddresses[0] would be the address for the token symbol _allTokenSymbols[0]
-    // would have to be very careful about changing allowed tokens after there are already employees created who are setup to be paid in different tokens, as paying them after that would fail
     function adjustAllowedTokenAddresses (address[] newAllowedTokenAddresses, bytes32[] _allTokenSymbols) onlyOwner {
         require(newAllowedTokenAddresses.length < 4);
         require(newAllowedTokenAddresses.length == _allTokenSymbols.length);
         // check if these token addresses are legit ERC20 tokens
-        for (uint i = 0; i < newAllowedTokenAddresses.length; i++) {
+        for (uint i = 0; i < 3; i++) {
             if (newAllowedTokenAddresses[i] == address(this)) {
                 // one of the tokens is ETH, fine, move on
             } else {
@@ -85,23 +80,19 @@ contract PayrollInterface is usingOraclize {
         allTokenSymbols = _allTokenSymbols;
     }
 
-    function addEmployee (address accountAddress, address[] allowedTokens, uint256[] distribution, uint256 yearlyEURSalary) onlyOwner {
-        // There is the determineAllocation function that lets an employee set how they are paid in different tokens, so this should also be set when an employee is created
-        // Going off how the determineAllocation function was written in the project description have two separate arrays for the tokens employee is paid in, and the % of their salary paid in that token - distribution[0] would be the % of the employees salary paid in the allowedTokens[0] token
-        require(allowedTokens.length < 4);
-        require(allowedTokens.length == distribution.length);
-        // require the distribution array to add up to 100%, and check if the token addresses this employee will be paid in exist in allTokenAddresses[] - won't use much gas with these loops since there will only be a handful of allowed tokens and the arrays will be very small
+    function addEmployee (address accountAddress, uint256[] distribution, uint256 yearlyEURSalary) onlyOwner {
+
+        // distribution[x] is the percentage of the employees salary paid in the token at address allTokenAddresses[x], so if the employee only wanted to be paid in ETH it might just be [100, 0, 0] for example
+
+        require(distribution.length == allTokenAddresses.length);
+
         uint totalDistribution;
         for (uint i = 0; i < distribution.length; i++) {
             totalDistribution = totalDistribution + distribution[i];
         }
         require(totalDistribution == 100);
-        // if there wasn't a max number of tokens allowed (3) hardcoded the below would be a loop within a loop, it would be tedious if there were a huge number of tokens in allTokenAddresses[] as there isn't an efficient way of searching an array in Solidity and gas will run out looping through it. Again it is just a practical decision to limit to 3 tokens employees can be paid in.
-        for (uint j = 0; j < allowedTokens.length; j++) {
-            require(allowedTokens[i] == allTokenAddresses[0] || allowedTokens[i] == allTokenAddresses[1] || allowedTokens[i] == allTokenAddresses[2]);
-        }
+        
         employees[numberOfActiveEmployees + numberOfDeletedEmployees].accountAddress = accountAddress;
-        employees[numberOfActiveEmployees + numberOfDeletedEmployees].allowedTokens = allowedTokens;
         employees[numberOfActiveEmployees + numberOfDeletedEmployees].distribution = distribution;
         employees[numberOfActiveEmployees + numberOfDeletedEmployees].yearlyEURSalary = yearlyEURSalary;
         employees[numberOfActiveEmployees + numberOfDeletedEmployees].timeCreated = now;
@@ -129,7 +120,7 @@ contract PayrollInterface is usingOraclize {
     }
     
     function() payable {
-        
+        // fallback function
     }
     
     function scapeHatch() onlyOwner {
@@ -145,9 +136,9 @@ contract PayrollInterface is usingOraclize {
         return numberOfActiveEmployees;
     }
     
-    function getEmployee (uint256 employeeId) onlyOwner constant returns (address, address[], uint256[], uint256, uint256, uint256, uint256) {
+    function getEmployee (uint256 employeeId) onlyOwner constant returns (address, uint256[], uint256, uint256, uint256, uint256) {
         // Return all info 
-        return (employees[employeeId].accountAddress, employees[employeeId].allowedTokens, employees[employeeId].distribution, employees[employeeId].yearlyEURSalary, employees[employeeId].timeCreated, employees[employeeId].lastAllocationChangeTime, employees[employeeId].lastPaidTime);
+        return (employees[employeeId].accountAddress, employees[employeeId].distribution, employees[employeeId].yearlyEURSalary, employees[employeeId].timeCreated, employees[employeeId].lastAllocationChangeTime, employees[employeeId].lastPaidTime);
     }
     
     function calculatePayrollBurnrate() onlyOwner constant returns (uint256) {
@@ -158,7 +149,7 @@ contract PayrollInterface is usingOraclize {
     function calculatePayrollRunway() onlyOwner constant returns (uint256) {
         // Days until the contract can run out of funds - only takes into account ETH balance. If employees wanted to be paid in different tokens and the contract only has ETH this function wouldn't be suitable
         uint256 totalDailySalaries = totalYearlySalaries/365;
-        // get the current value of ETH in Euro's
+        // get the current value of ETH in Euro's. setExchangeRate('ETH') updates the value of latestExchangeRate
         setExchangeRate('ETH');
         uint256 contractBalanceInEuro = this.balance * latestExchangeRate;
         return contractBalanceInEuro/totalDailySalaries;
@@ -168,8 +159,9 @@ contract PayrollInterface is usingOraclize {
         // this will calculate the value in Euro's of any other tokens in the allTokenSymbols[] array the contract may own, in addition to ETH - then compare the value of all that to the salary in Euro of all employees
         uint256 totalEURbalance;
         uint256 totalDailySalaries = totalYearlySalaries/365;
-        for (uint i = 0; i < allTokenAddresses.length; i++) {
+        for (uint i = 0; i < 3; i++) {
             if (allTokenAddresses[i] != address(this)) {
+                // ERC20 token other than ETH. Get the token symbol, find out the current balance of the token owned by this contract, and query kraken to see the value of this token in Euro's
                 string memory token = bytes32ToString(allTokenSymbols[i]);
                 uint256 tokenBalance = ExternalToken(allTokenAddresses[i]).balanceOf(address(this));
                 setExchangeRate(token);
@@ -186,27 +178,22 @@ contract PayrollInterface is usingOraclize {
     
     /* EMPLOYEE ONLY */ 
     
-    function retreiveAllocation (uint256 employeeId) returns (address[] tokens, uint256[] distribution) {
+    function retreiveAllocation (uint256 employeeId) returns (address[], uint256[]) {
         // have a function to let the employee verify their current token allocation, since the getEmployee function can only be called by the contract owner (per project requirements).
         require(employees[employeeId].accountAddress == msg.sender);
-        return (employees[employeeId].allowedTokens, employees[employeeId].distribution);
+        return (allTokenAddresses, employees[employeeId].distribution);
     }
 
-    function determineAllocation (uint256 employeeId, address[] tokens, uint256[] distribution) {
+    function determineAllocation (uint256 employeeId, uint256[] distribution) {
         // only callable once every 6 months 
         require(employees[employeeId].accountAddress == msg.sender);
-        require(tokens.length == distribution.length);
         require(now > employees[employeeId].lastAllocationChangeTime + 180 days);
-        // require the distribution array to add up to 100% and the tokens the employee wants to be paid in to be in the allTokenAddresses[] array, same as when an employee is first created
+        // require the distribution array to add up to 100%, same as when an employee is first created
         uint totalDistribution;
-        for (uint i = 0; i < distribution.length; i++) {
+        for (uint i = 0; i < 3; i++) {
             totalDistribution = totalDistribution + distribution[i];
         }
         require(totalDistribution == 100);
-        for (uint j = 0; j < tokens.length; j++) {
-            require(tokens[i] == allTokenAddresses[0] || tokens[i] == allTokenAddresses[1] || tokens[i] == allTokenAddresses[2]);
-        }
-        employees[employeeId].allowedTokens = tokens;
         employees[employeeId].distribution = distribution;
         employees[employeeId].lastAllocationChangeTime = now;
     } 
@@ -216,23 +203,17 @@ contract PayrollInterface is usingOraclize {
         require(employees[employeeId].accountAddress == msg.sender);
         require(now > employees[employeeId].lastPaidTime + 30 days);
         uint256 employeeSalary = employees[employeeId].yearlyEURSalary;
-        for (uint i = 0; i < employees[employeeId].allowedTokens.length; i++) {
+        for (uint i = 0; i < 3; i++) {
             uint256 distribution = employees[employeeId].distribution[i];
             uint256 valueOfTokenInEuro = (employeeSalary * distribution)/100;
-            if (employees[employeeId].allowedTokens[i] == address(this)) {
+            if (allTokenAddresses[i] == address(this)) {
                 // ETH
                 setExchangeRate('ETH');
                 uint256 amountOfETHToTransfer = valueOfTokenInEuro / latestExchangeRate;
                 msg.sender.transfer(amountOfETHToTransfer);
             } else {
-                bytes32 tokenBytes32;
-                if (employees[employeeId].allowedTokens[i] == allTokenAddresses[0]) {
-                    tokenBytes32 = allTokenSymbols[0];
-                } else if (employees[employeeId].allowedTokens[i] == allTokenAddresses[1]) {
-                    tokenBytes32 = allTokenSymbols[1];
-                } else if (employees[employeeId].allowedTokens[i] == allTokenAddresses[2]) {
-                    tokenBytes32 = allTokenSymbols[2];
-                }
+                // ERC20 token
+                bytes32 tokenBytes32 = allTokenSymbols[i]
                 string memory tokenString = bytes32ToString(tokenBytes32);
                 setExchangeRate(tokenString);
                 uint256 amountOfTokenToTransfer = valueOfTokenInEuro / latestExchangeRate;
@@ -265,12 +246,9 @@ contract PayrollInterface is usingOraclize {
             newOraclizeQuery("Oraclize query was NOT sent, please add some ETH to cover for the query fee");
         } else {
             newOraclizeQuery("Oraclize query was sent, standing by for the answer..");
+            // the symbol parameter is concatenated into the oraclize query below
             oraclize_query("URL", strConcat("json(https://api.kraken.com/0/public/Ticker?pair=", symbol,"EUR).result.X", symbol,"ZEUR.c.0"));
         }
     }
     
-    
-    
-    // function setExchangeRate (address token, uint256 EURExchangeRate); // uses decimals from token 
-
 }
