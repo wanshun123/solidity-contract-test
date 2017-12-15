@@ -17,9 +17,9 @@ contract PayrollInterface is usingOraclize {
 
     function PayrollInterface() {
         owner = msg.sender;
-        allTokenSymbols.push("ETH");
-        allTokenSymbols.push("LTC");
-        allTokenSymbols.push("XRP");
+        // allTokenSymbols.push("ETH");
+        // allTokenSymbols.push("LTC");
+        // allTokenSymbols.push("XRP");
     }
     
     modifier onlyOwner {
@@ -45,10 +45,9 @@ contract PayrollInterface is usingOraclize {
     // for testing purposes allTokenAddresses[1] and allTokenAddresses[2] are token addresses for tokens called LTC and XRP that I've deployed on rinkeby
     address[] allTokenAddresses = [address(this), 0x0a6ebb3690b7983e470D3aBFB86636cf64925B98, 0x38206cAb32b67F33F07ac7df984127975120Ee09];
     
-    // the bytes32[] array below is "ETH", "LTC" and "XRP" in bytes32 (these are added to this array in the constructor function when the contract is created), as commented below Solidity doesn't allow an array of strings so it has to be like this then converted to a string when needed
-    bytes32[] public allTokenSymbols;
-    // bytes32[] public allTokenSymbols = ["0x4554480000000000000000000000000000000000000000000000000000000000", "0x4c54430000000000000000000000000000000000000000000000000000000000", "0x5852500000000000000000000000000000000000000000000000000000000000"];
-    
+    // the bytes32[] array below is "ETH", "LTC" and "XRP" in bytes32, as commented below Solidity doesn't allow an array of strings so it has to be like this then converted to a string when needed
+    bytes32[] public allTokenSymbols = [bytes32(0x4554480000000000000000000000000000000000000000000000000000000000), bytes32(0x4c54430000000000000000000000000000000000000000000000000000000000),bytes32(0x5852500000000000000000000000000000000000000000000000000000000000)];    
+        
     function bytes32ToString(bytes32 x) constant returns (string) {
     bytes memory bytesString = new bytes(32);
     uint charCount = 0;
@@ -138,7 +137,7 @@ contract PayrollInterface is usingOraclize {
     }
     
     function addTokenFunds() onlyOwner {
-        // is this necessary? function isn't required for the contract to receive tokens, anyone can still transfer an ERC20 token to a contract address
+        // is this necessary? function isn't required for the contract to receive tokens, anyone can still transfer an ERC20 token to a contract address by calling the transfer() function of an ERC20 token
         // Use approveAndCall or ERC223 tokenFallback 
     }
     
