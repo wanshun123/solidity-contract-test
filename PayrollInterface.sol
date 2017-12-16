@@ -182,15 +182,19 @@ contract PayrollInterface is usingOraclize {
     uint public totalEURBalanceAllTokens;
     bool public calculateAllTokensRunwayInProgress;
     bool public allTokensETHinProgress;
-    uint[] public exchangeRatesTokens;
+    // uint[] public exchangeRatesTokens;
+    
+    mapping (uint => uint) public exchangeRatesTokens;
     
     function calculatePayrollRunwayIncludingAllTokens() payable onlyOwnerOrOraclize {
         // this will calculate the value in Euro's of any other tokens in the allTokenSymbols[] array the contract may own, in addition to ETH - then compare the value of all that to the salary in Euro of all employees. Will take some time as it has to query kraken for the exchange rate of each token
         // as with the calculateETHPayrollRunway() function, this has to be split into 2 functions, one to query oraclize and then one to process the result
         calculateAllTokensRunwayInProgress = true;
         
-        // tokenAt will start at 0, this will call kraken to get the exchange rate, then that will call returnAllTokensPayrollRunway() where tokenAt is incremented and this is called again, has to be done this way to give time for kraken to return the exchange rate and make sure the exchangeRatesTokens[] is populated slowly and in order
-        if (allTokenAddresses[tokenAt] != address(this)) {
+        // tokenAt will start at 0, this will call kraken to get the exchange rate, then that will call returnAllTokensPayrollRunway() where value of tokens is added
+        
+        for (tokenAt = 0; tokenAt < allTokenAddresses.length; tokenAt++) {
+            if (allTokenAddresses[tokenAt] != address(this)) {
                 // ERC20 token other than ETH. Get the token symbol and query kraken to see the value of this token in Euro's, then returnAllTokensPayrollRunway() below will be callsed which finds the how many tokens this contract owns and their value in Euro's
                 string memory token = bytes32ToString(allTokenSymbols[tokenAt]);
                 setExchangeRate(token);
@@ -198,7 +202,7 @@ contract PayrollInterface is usingOraclize {
                 allTokensETHinProgress = true;
                 setExchangeRate("ETH");
             }
-        
+        }
     }
     
     function returnAllTokensPayrollRunway() onlyOwnerOrOraclize {
@@ -220,12 +224,7 @@ contract PayrollInterface is usingOraclize {
             latestAllTokensPayrollRunway = totalEURBalanceAllTokens/totalDailySalaries;
             totalEURBalanceAllTokens = 0;
             tokenAt = 0;
-        } else {
-            tokenAt++;
-            // calculatePayrollRunwayIncludingAllTokens();
-        }
-        
-        
+        } 
     }
     
     
@@ -303,7 +302,8 @@ contract PayrollInterface is usingOraclize {
             returnETHPayrollRunway();
         } else if (calculateAllTokensRunwayInProgress) {
             // calculateAllTokensRunwayInProgress = false;
-            exchangeRatesTokens.push(latestExchangeRate);
+            // exchangeRatesTokens.push(latestExchangeRate);
+            exchangeRatesTokens[tokenAt] = latestExchangeRate;
             returnAllTokensPayrollRunway();
         }
         
