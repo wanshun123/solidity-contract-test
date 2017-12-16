@@ -14,12 +14,6 @@ contract PayrollInterface is usingOraclize {
     uint public numberOfActiveEmployees;
     uint public numberOfDeletedEmployees;
     uint public totalYearlySalaries;
-    
-    uint public testingg;
-    function testing() returns (uint256) {
-        testingg = ExternalToken(allTokenAddresses[1]).totalSupply();
-        return ExternalToken(allTokenAddresses[1]).totalSupply();
-    }
 
     function PayrollInterface() {
         oraclize_setProof(proofType_TLSNotary | proofStorage_IPFS);
@@ -182,52 +176,60 @@ contract PayrollInterface is usingOraclize {
     uint public totalEURBalanceAllTokens;
     bool public calculateAllTokensRunwayInProgress;
     bool public allTokensETHinProgress;
-    // uint[] public exchangeRatesTokens;
-    
+
     mapping (uint => uint) public exchangeRatesTokens;
+    mapping (uint => uint) public balancesTokens;
     
     function calculatePayrollRunwayIncludingAllTokens() payable onlyOwnerOrOraclize {
         // this will calculate the value in Euro's of any other tokens in the allTokenSymbols[] array the contract may own, in addition to ETH - then compare the value of all that to the salary in Euro of all employees. Will take some time as it has to query kraken for the exchange rate of each token
         // as with the calculateETHPayrollRunway() function, this has to be split into 2 functions, one to query oraclize and then one to process the result
         calculateAllTokensRunwayInProgress = true;
         
-        // tokenAt will start at 0, this will call kraken to get the exchange rate, then that will call returnAllTokensPayrollRunway() where value of tokens is added
+        // tokenAt will start at 0, this will call kraken to get the exchange rate, then that will call generateAllTokensPayrollRunway() where value of tokens is added
         
         for (tokenAt = 0; tokenAt < allTokenAddresses.length; tokenAt++) {
             if (allTokenAddresses[tokenAt] != address(this)) {
-                // ERC20 token other than ETH. Get the token symbol and query kraken to see the value of this token in Euro's, then returnAllTokensPayrollRunway() below will be callsed which finds the how many tokens this contract owns and their value in Euro's
+                // ERC20 token other than ETH. Get the token symbol and query kraken to see the value of this token in Euro's, then generateAllTokensPayrollRunway() below will be called which finds their value in Euro's. How many tokens this contract owns is returned in the next line and is returned well before kraken comes back with an exchange rate, a better approach though might be to have 3 seperate functions all for finding the balances of each token, finding their exchange rate, and then another to find the value in Euro's (exchange rates * balances) all called one by one 
+                // can also make oraclize queries wait a certain time though have to pay the fee twice then
+                balancesTokens[tokenAt] = ExternalToken(allTokenAddresses[tokenAt]).balanceOf(address(this));
                 string memory token = bytes32ToString(allTokenSymbols[tokenAt]);
                 setExchangeRate(token);
             } else {
+                balancesTokens[tokenAt] = this.balance;
                 allTokensETHinProgress = true;
                 setExchangeRate("ETH");
             }
         }
     }
     
-    function returnAllTokensPayrollRunway() onlyOwnerOrOraclize {
+    function generateAllTokensPayrollRunway() onlyOwnerOrOraclize {
+        
+        if (!calculateAllTokensRunwayInProgress) {
+            revert();
+        }
         
         if (allTokensETHinProgress) {
             allTokensETHinProgress = false;
             uint256 contractBalanceInEuroETH = this.balance * exchangeRatesTokens[tokenAt];
             totalEURBalanceAllTokens = totalEURBalanceAllTokens + contractBalanceInEuroETH;
         } else {
-            uint256 tokenBalance = ExternalToken(allTokenAddresses[tokenAt]).balanceOf(address(this));
-            uint256 contractBalanceInEuroERC20Token = tokenBalance * exchangeRatesTokens[tokenAt];
+            uint256 contractBalanceInEuroERC20Token = balancesTokens[tokenAt] * exchangeRatesTokens[tokenAt];
             totalEURBalanceAllTokens = totalEURBalanceAllTokens + contractBalanceInEuroERC20Token;
         }
         
-        if (tokenAt == allTokenAddresses.length - 1) {
+        if (tokenAt == (allTokenAddresses.length - 1)) {
             // done for all tokens
             calculateAllTokensRunwayInProgress = false;
             uint256 totalDailySalaries = totalYearlySalaries/365;
             latestAllTokensPayrollRunway = totalEURBalanceAllTokens/totalDailySalaries;
-            totalEURBalanceAllTokens = 0;
-            tokenAt = 0;
+            // totalEURBalanceAllTokens = 0;
+            // tokenAt = 0;
         } 
     }
     
-    
+    function latestAllTokensPayrollRunwayValue() onlyOwner returns (uint256) {
+        return latestAllTokensPayrollRunway;
+    }
     
     
     
@@ -253,6 +255,7 @@ contract PayrollInterface is usingOraclize {
         employees[employeeId].lastAllocationChangeTime = now;
     } 
 
+    // TODO: Update exchangeRatesTokens[] when this is called
     function payday (uint256 employeeId) {
         // only callable once a month 
         if (isPaused) {
@@ -267,14 +270,14 @@ contract PayrollInterface is usingOraclize {
             if (allTokenAddresses[i] == address(this)) {
                 // ETH
                 setExchangeRate('ETH');
-                uint256 amountOfETHToTransfer = valueOfTokenInEuro / latestExchangeRate;
+                uint256 amountOfETHToTransfer = valueOfTokenInEuro / exchangeRatesTokens[i];
                 msg.sender.transfer(amountOfETHToTransfer);
             } else {
                 // ERC20 token. Similar to the calculatePayrollRunwayIncludingAllTokens(), get the token symbol and the exchange rate of the tokens in Euro's. Then call the transfer() function in that token contract to send the right amount of tokens to the employee
                 bytes32 tokenBytes32 = allTokenSymbols[i];
                 string memory tokenString = bytes32ToString(tokenBytes32);
                 setExchangeRate(tokenString);
-                uint256 amountOfTokenToTransfer = valueOfTokenInEuro / latestExchangeRate;
+                uint256 amountOfTokenToTransfer = valueOfTokenInEuro / exchangeRatesTokens[i];
                 ExternalToken(allTokenAddresses[i]).transfer(msg.sender, amountOfTokenToTransfer);
             }
         }
@@ -304,7 +307,7 @@ contract PayrollInterface is usingOraclize {
             // calculateAllTokensRunwayInProgress = false;
             // exchangeRatesTokens.push(latestExchangeRate);
             exchangeRatesTokens[tokenAt] = latestExchangeRate;
-            returnAllTokensPayrollRunway();
+            generateAllTokensPayrollRunway();
         }
         
     }
