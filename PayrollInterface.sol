@@ -154,14 +154,16 @@ contract PayrollInterface is usingOraclize {
         return totalYearlySalaries/12;
     }
     
-    function calculatePayrollRunway() onlyOwner constant returns (uint256) {
+    uint public payrollRunway;
+    function calculatePayrollRunway() payable onlyOwner returns (uint256) {
         // Days until the contract can run out of funds - only takes into account ETH balance. If employees wanted to be paid in different tokens and the contract only has ETH this function wouldn't be suitable
         uint256 totalDailySalaries = totalYearlySalaries/365;
         // get the current value of ETH in Euro's. setExchangeRate('ETH') updates the value of latestExchangeRate
         setExchangeRate("ETH");
         uint256 contractBalanceInEuro = this.balance * latestExchangeRate;
         // an ETH balance of 1 would make this.balance = 1 * 10^18
-        return (contractBalanceInEuro/totalDailySalaries)/10**18;
+        payrollRunway = (contractBalanceInEuro/totalDailySalaries)/10**18;
+        return payrollRunway;
     } 
     
     function calculatePayrollRunwayIncludingAllTokens() onlyOwner constant returns (uint256) {
