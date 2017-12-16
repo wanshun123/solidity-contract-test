@@ -62,12 +62,12 @@ contract PayrollInterface is usingOraclize {
     }
     
     // have to have the token symbols stored for when kraken is called to get the value of that token in Euro's, it's not guaranteed an ERC20 token will have a symbol of type string specified in its contract so let the owner state what the symbol is. Has to be an array of bytes32 which will then be converted to a string via the bytes32ToString() function, since Solidity doesn't allow an array of variable length strings
-    // newAllowedTokenAddresses[0] would be the address for the token symbol _allTokenSymbols[0]
+    // newAllowedTokenAddresses[x] would be the address for the token symbol _allTokenSymbols[x]
     function adjustAllowedTokenAddresses (address[] newAllowedTokenAddresses, bytes32[] _allTokenSymbols) onlyOwner {
         require(newAllowedTokenAddresses.length < 4);
         require(newAllowedTokenAddresses.length == _allTokenSymbols.length);
         // check if these token addresses are legit ERC20 tokens
-        for (uint i = 0; i < 3; i++) {
+        for (uint i = 0; i < newAllowedTokenAddresses.length; i++) {
             if (newAllowedTokenAddresses[i] == address(this)) {
                 // one of the tokens is ETH, fine, move on
             } else {
@@ -123,8 +123,15 @@ contract PayrollInterface is usingOraclize {
         // fallback function
     }
     
+    bool isPaused;
+    
     function scapeHatch() onlyOwner {
-        // unclear what this is supposed to do
+        // no instructions on what this is supposed to do exactly, assuming it's a function to halt the contract from sending out tokens
+        if (isPaused = false) {
+            isPaused = true;
+        } else {
+            isPaused = false;
+        }
     }
     
     function addTokenFunds() onlyOwner {
@@ -159,7 +166,7 @@ contract PayrollInterface is usingOraclize {
         // this will calculate the value in Euro's of any other tokens in the allTokenSymbols[] array the contract may own, in addition to ETH - then compare the value of all that to the salary in Euro of all employees
         uint256 totalEURbalance;
         uint256 totalDailySalaries = totalYearlySalaries/365;
-        for (uint i = 0; i < 3; i++) {
+        for (uint i = 0; i < allTokenAddresses.length; i++) {
             if (allTokenAddresses[i] != address(this)) {
                 // ERC20 token other than ETH. Get the token symbol, find out the current balance of the token owned by this contract, and query kraken to see the value of this token in Euro's
                 string memory token = bytes32ToString(allTokenSymbols[i]);
@@ -190,7 +197,7 @@ contract PayrollInterface is usingOraclize {
         require(now > employees[employeeId].lastAllocationChangeTime + 180 days);
         // require the distribution array to add up to 100%, same as when an employee is first created
         uint totalDistribution;
-        for (uint i = 0; i < 3; i++) {
+        for (uint i = 0; i < distribution.length; i++) {
             totalDistribution = totalDistribution + distribution[i];
         }
         require(totalDistribution == 100);
@@ -200,10 +207,13 @@ contract PayrollInterface is usingOraclize {
 
     function payday (uint256 employeeId) {
         // only callable once a month 
+        if (isPaused) {
+            revert();
+        }
         require(employees[employeeId].accountAddress == msg.sender);
         require(now > employees[employeeId].lastPaidTime + 30 days);
         uint256 employeeSalary = employees[employeeId].yearlyEURSalary;
-        for (uint i = 0; i < 3; i++) {
+        for (uint i = 0; i < allTokenAddresses.length; i++) {
             uint256 distribution = employees[employeeId].distribution[i];
             uint256 valueOfTokenInEuro = (employeeSalary * distribution)/100;
             if (allTokenAddresses[i] == address(this)) {
@@ -212,8 +222,8 @@ contract PayrollInterface is usingOraclize {
                 uint256 amountOfETHToTransfer = valueOfTokenInEuro / latestExchangeRate;
                 msg.sender.transfer(amountOfETHToTransfer);
             } else {
-                // ERC20 token
-                bytes32 tokenBytes32 = allTokenSymbols[i]
+                // ERC20 token. Similar to the calculatePayrollRunwayIncludingAllTokens(), get the token symbol and the exchange rate of the tokens in Euro's. Then call the transfer() function in that token contract to send the right amount of tokens to the employee
+                bytes32 tokenBytes32 = allTokenSymbols[i];
                 string memory tokenString = bytes32ToString(tokenBytes32);
                 setExchangeRate(tokenString);
                 uint256 amountOfTokenToTransfer = valueOfTokenInEuro / latestExchangeRate;
