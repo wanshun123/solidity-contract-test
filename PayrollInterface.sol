@@ -46,10 +46,10 @@ contract PayrollInterface is usingOraclize {
     // ETH itself doesn't have a token contract address, for that this contract address can be entered, ie. address(this)
     
     // for testing purposes allTokenAddresses[1] and allTokenAddresses[2] are token addresses for tokens called LTC and XRP that I've deployed on rinkeby using icocompiler.com
-    address[] public allTokenAddresses = [address(this), 0x0a6ebb3690b7983e470D3aBFB86636cf64925B98, 0x38206cAb32b67F33F07ac7df984127975120Ee09];
+    address[] public allTokenAddresses = [address(this), 0x0a6ebb3690b7983e470D3aBFB86636cf64925B98, 0xAeCbB7a5017587046D55dc68928544B81c1A3b35];
     
-    // the bytes32[] array below is "ETH", "LTC" and "XRP" in bytes32, as commented below Solidity doesn't allow an array of strings so it has to be like this then converted to a string when needed
-    bytes32[] public allTokenSymbols = [bytes32(0x4554480000000000000000000000000000000000000000000000000000000000), bytes32(0x4c54430000000000000000000000000000000000000000000000000000000000),bytes32(0x5852500000000000000000000000000000000000000000000000000000000000)];    
+    // the bytes32[] array below is "ETH", "LTC" and "XMR" in bytes32, as commented below Solidity doesn't allow an array of strings so it has to be like this then converted to a string when needed
+    bytes32[] public allTokenSymbols = [bytes32(0x4554480000000000000000000000000000000000000000000000000000000000), bytes32(0x4c54430000000000000000000000000000000000000000000000000000000000),bytes32(0x584d520000000000000000000000000000000000000000000000000000000000)];    
         
     function bytes32ToString(bytes32 x) constant returns (string) {
     bytes memory bytesString = new bytes(32);
@@ -188,6 +188,7 @@ contract PayrollInterface is usingOraclize {
         // this will calculate the value in Euro's of any other tokens in the allTokenSymbols[] array the contract may own, in addition to ETH - then compare the value of all that to the salary in Euro of all employees. Will take some time as it has to query kraken for the exchange rate of each token
         // as with the calculateETHPayrollRunway() function, this has to be split into 2 functions, one to query oraclize and then one to process the result
         calculateAllTokensRunwayInProgress = true;
+        tokenAt = 0;
         for (tokenAt = 0; tokenAt < allTokenAddresses.length; tokenAt++) {
             if (allTokenAddresses[tokenAt] != address(this)) {
                 // ERC20 token other than ETH. Get the token symbol and query kraken to see the value of this token in Euro's, then returnAllTokensPayrollRunway() below will be callsed which finds the how many tokens this contract owns and their value in Euro's
@@ -217,9 +218,8 @@ contract PayrollInterface is usingOraclize {
             calculateAllTokensRunwayInProgress = false;
             uint256 totalDailySalaries = totalYearlySalaries/365;
             latestAllTokensPayrollRunway = totalEURBalanceAllTokens/totalDailySalaries;
+            totalEURBalanceAllTokens = 0;
         }
-        tokenAt = 0;
-        totalEURBalanceAllTokens = 0;
         return latestAllTokensPayrollRunway;
     }
     
@@ -298,7 +298,9 @@ contract PayrollInterface is usingOraclize {
             returnETHPayrollRunway();
         } else if (calculateAllTokensRunwayInProgress) {
             // calculateAllTokensRunwayInProgress = false;
-            exchangeRatesTokens.push(latestExchangeRate);
+            // exchangeRatesTokens.push(latestExchangeRate);
+            // token may be worth less than 1 euro in which case latestExchangeRate would be 0, multiply then divide later
+            exchangeRatesTokens[tokenAt] = latestExchangeRate;
             returnAllTokensPayrollRunway();
         }
         
