@@ -10,12 +10,13 @@ interface ExternalToken {
 
 contract PayrollInterface is usingOraclize { 
     
-    address owner;
+    address public owner;
     uint public numberOfActiveEmployees;
     uint public numberOfDeletedEmployees;
     uint public totalYearlySalaries;
 
     function PayrollInterface() {
+        oraclize_setProof(proofType_TLSNotary | proofStorage_IPFS);
         owner = msg.sender;
     }
     
@@ -39,7 +40,7 @@ contract PayrollInterface is usingOraclize {
     // ETH itself doesn't have a token contract address, for that this contract address can be entered, ie. address(this)
     
     // for testing purposes allTokenAddresses[1] and allTokenAddresses[2] are token addresses for tokens called LTC and XRP that I've deployed on rinkeby
-    address[] allTokenAddresses = [address(this), 0x0a6ebb3690b7983e470D3aBFB86636cf64925B98, 0x38206cAb32b67F33F07ac7df984127975120Ee09];
+    address[] public allTokenAddresses = [address(this), 0x0a6ebb3690b7983e470D3aBFB86636cf64925B98, 0x38206cAb32b67F33F07ac7df984127975120Ee09];
     
     // the bytes32[] array below is "ETH", "LTC" and "XRP" in bytes32, as commented below Solidity doesn't allow an array of strings so it has to be like this then converted to a string when needed
     bytes32[] public allTokenSymbols = [bytes32(0x4554480000000000000000000000000000000000000000000000000000000000), bytes32(0x4c54430000000000000000000000000000000000000000000000000000000000),bytes32(0x5852500000000000000000000000000000000000000000000000000000000000)];    
@@ -97,7 +98,7 @@ contract PayrollInterface is usingOraclize {
         employees[numberOfActiveEmployees + numberOfDeletedEmployees].yearlyEURSalary = yearlyEURSalary;
         employees[numberOfActiveEmployees + numberOfDeletedEmployees].timeCreated = now;
         numberOfActiveEmployees++;
-        totalYearlySalaries = totalYearlySalaries + employees[numberOfActiveEmployees + numberOfDeletedEmployees].yearlyEURSalary;
+        totalYearlySalaries = totalYearlySalaries + yearlyEURSalary;
     }
     
     function setEmployeeSalary (uint256 employeeId, uint256 yearlyEURSalary) onlyOwner {
@@ -123,7 +124,7 @@ contract PayrollInterface is usingOraclize {
         // fallback function
     }
     
-    bool isPaused;
+    bool public isPaused;
     
     function scapeHatch() onlyOwner {
         // no instructions on what this is supposed to do exactly, assuming it's a function to halt the contract from sending out tokens
@@ -157,9 +158,10 @@ contract PayrollInterface is usingOraclize {
         // Days until the contract can run out of funds - only takes into account ETH balance. If employees wanted to be paid in different tokens and the contract only has ETH this function wouldn't be suitable
         uint256 totalDailySalaries = totalYearlySalaries/365;
         // get the current value of ETH in Euro's. setExchangeRate('ETH') updates the value of latestExchangeRate
-        setExchangeRate('ETH');
+        setExchangeRate("ETH");
         uint256 contractBalanceInEuro = this.balance * latestExchangeRate;
-        return contractBalanceInEuro/totalDailySalaries;
+        // an ETH balance of 1 would make this.balance = 1 * 10^18
+        return (contractBalanceInEuro/totalDailySalaries)/10**18;
     } 
     
     function calculatePayrollRunwayIncludingAllTokens() onlyOwner constant returns (uint256) {
@@ -242,9 +244,9 @@ contract PayrollInterface is usingOraclize {
         _;
     }
     
-    uint256 latestExchangeRate;
+    uint256 public latestExchangeRate;
 
-    function __callback (string result) {
+    function __callback (bytes32 myid, string result, bytes proof) {
         if (msg.sender != oraclize_cbAddress()) throw;
         latestExchangeRate = parseInt(result);
         newOraclizeQuery("Result returned");
