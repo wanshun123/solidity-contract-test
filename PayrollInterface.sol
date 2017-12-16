@@ -205,7 +205,7 @@ contract PayrollInterface is usingOraclize {
         
         if (allTokensETHinProgress) {
             allTokensETHinProgress = false;
-            uint256 contractBalanceInEuroETH = this.balance * latestExchangeRate;
+            uint256 contractBalanceInEuroETH = this.balance * exchangeRatesTokens[tokenAt];
             totalEURBalanceAllTokens = totalEURBalanceAllTokens + contractBalanceInEuroETH;
         } else {
             uint256 tokenBalance = ExternalToken(allTokenAddresses[tokenAt]).balanceOf(address(this));
@@ -222,7 +222,7 @@ contract PayrollInterface is usingOraclize {
             tokenAt = 0;
         } else {
             tokenAt++;
-            calculatePayrollRunwayIncludingAllTokens();
+            // calculatePayrollRunwayIncludingAllTokens();
         }
         
         
@@ -303,8 +303,6 @@ contract PayrollInterface is usingOraclize {
             returnETHPayrollRunway();
         } else if (calculateAllTokensRunwayInProgress) {
             // calculateAllTokensRunwayInProgress = false;
-            // exchangeRatesTokens.push(latestExchangeRate);
-            // token may be worth less than 1 euro in which case latestExchangeRate would be 0, multiply then divide later
             exchangeRatesTokens.push(latestExchangeRate);
             returnAllTokensPayrollRunway();
         }
