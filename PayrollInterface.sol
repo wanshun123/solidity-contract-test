@@ -154,17 +154,23 @@ contract PayrollInterface is usingOraclize {
         return totalYearlySalaries/12;
     }
     
-    uint public payrollRunway;
-    function calculatePayrollRunway() payable onlyOwner returns (uint256) {
+    uint public latestETHPayrollRunway;
+    bool public calculateETHRunwayInProgress;
+    function calculateETHPayrollRunway() payable onlyOwner {
         // Days until the contract can run out of funds - only takes into account ETH balance. If employees wanted to be paid in different tokens and the contract only has ETH this function wouldn't be suitable
-        uint256 totalDailySalaries = totalYearlySalaries/365;
-        // get the current value of ETH in Euro's. setExchangeRate('ETH') updates the value of latestExchangeRate
+        // get the current value of ETH in Euro's. setExchangeRate("ETH") updates the value of latestExchangeRate, then in the callback oraclize function it'll call returnETHPayrollRunway() to return the latestETHPayrollRunway value. Has to be done like this as Solidity doesn't wait for setExchangeRate("ETH") to finish before moving to the next line
+        calculateETHRunwayInProgress = true;
         setExchangeRate("ETH");
-        uint256 contractBalanceInEuro = this.balance * latestExchangeRate;
-        // an ETH balance of 1 would make this.balance = 1 * 10^18
-        payrollRunway = (contractBalanceInEuro/totalDailySalaries)/10**18;
-        return payrollRunway;
     } 
+    
+    bool public yo;
+    function returnETHPayrollRunway() onlyOwnerOrOraclize returns (uint256) {
+        uint256 totalDailySalaries = totalYearlySalaries/365;
+        uint256 contractBalanceInEuro = this.balance * latestExchangeRate;
+        latestETHPayrollRunway = (contractBalanceInEuro/totalDailySalaries)/10**18;
+        yo = true;
+        return latestETHPayrollRunway;
+    }
     
     function calculatePayrollRunwayIncludingAllTokens() onlyOwner constant returns (uint256) {
         // this will calculate the value in Euro's of any other tokens in the allTokenSymbols[] array the contract may own, in addition to ETH - then compare the value of all that to the salary in Euro of all employees
@@ -179,7 +185,7 @@ contract PayrollInterface is usingOraclize {
                 uint256 contractBalanceInEuroERC20Token = tokenBalance * latestExchangeRate;
                 totalEURbalance = totalEURbalance + contractBalanceInEuroERC20Token;
             } else {
-                setExchangeRate('ETH');
+                setExchangeRate("ETH");
                 uint256 contractBalanceInEuroETH = this.balance * latestExchangeRate;
                 totalEURbalance = totalEURbalance + contractBalanceInEuroETH;
             }
@@ -252,6 +258,12 @@ contract PayrollInterface is usingOraclize {
         if (msg.sender != oraclize_cbAddress()) throw;
         latestExchangeRate = parseInt(result);
         newOraclizeQuery("Result returned");
+        
+        if(calculateETHRunwayInProgress) {
+            calculateETHRunwayInProgress = false;
+            returnETHPayrollRunway();
+        }
+        
     }
     
     function setExchangeRate (string symbol) payable onlyOwnerOrOraclize {
