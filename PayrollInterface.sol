@@ -177,14 +177,14 @@ contract PayrollInterface is usingOraclize {
         return latestETHPayrollRunway;
     }
     
-    uint public tokenAt = 0;
     uint public latestAllTokensPayrollRunway;
     uint public totalEURBalanceAllTokens;
     bool public calculateAllTokensRunwayInProgress;
     bool public allTokensETHinProgress;
-   //  uint[] public exchangeRatesTokens;
+   
+    event PayrollRunwayIncludingAllTokensCompleted;
     
-    uint public tokenAt2 = 0;
+    uint public tokenAt;
     
     mapping (uint => uint) public exchangeRatesTokens;
     mapping (uint => uint) public tokenBalances;
@@ -193,47 +193,51 @@ contract PayrollInterface is usingOraclize {
         // this will calculate the value in Euro's of any other tokens in the allTokenSymbols[] array the contract may own, in addition to ETH - then compare the value of all that to the salary in Euro of all employees. Will take some time as it has to query kraken for the exchange rate of each token
         // as with the calculateETHPayrollRunway() function, this is split into 2 functions, one to query oraclize and then one to process the result
         calculateAllTokensRunwayInProgress = true;
-        tokenAt = 0;
-        for (tokenAt = 0; tokenAt < allTokenAddresses.length; tokenAt++) {
-            if (allTokenAddresses[tokenAt] != address(this)) {
+        for (uint i = 0; i < allTokenAddresses.length; i++) {
+            if (allTokenAddresses[i] != address(this)) {
                 // ERC20 token other than ETH. Get the token symbol and query kraken to see the value of this token in Euro's, then returnAllTokensPayrollRunway() below will be callsed which finds the how many tokens this contract owns and their value in Euro's
                 // queries executed 30 seconds apart
-                tokenBalances[tokenAt] = ExternalToken(allTokenAddresses[tokenAt]).balanceOf(address(this));
-                string memory token = bytes32ToString(allTokenSymbols[tokenAt]);
+                tokenBalances[i] = ExternalToken(allTokenAddresses[i]).balanceOf(address(this));
+                string memory token = bytes32ToString(allTokenSymbols[i]);
                 // setExchangeRate(token);
-                oraclize_query(30 * tokenAt, "URL", strConcat("json(https://api.kraken.com/0/public/Ticker?pair=", token,"EUR).result.X", token,"ZEUR.c.0"), 500000);
+                oraclize_query(30 * i, "URL", strConcat("json(https://api.kraken.com/0/public/Ticker?pair=", token,"EUR).result.X", token,"ZEUR.c.0"));
             } else {
-                tokenBalances[tokenAt] = this.balance;
+                tokenBalances[i] = this.balance;
                 allTokensETHinProgress = true;
-                oraclize_query(30 * tokenAt, "URL", strConcat("json(https://api.kraken.com/0/public/Ticker?pair=ETHEUR).result.XETHZEUR.c.0"), 500000);
+                oraclize_query(30 * i, "URL", "json(https://api.kraken.com/0/public/Ticker?pair=ETHEUR).result.XETHZEUR.c.0");
             }
         }
     }
     
     uint public testingyall = allTokenAddresses.length;
     
-    function returnAllTokensPayrollRunway() onlyOwnerOrOraclize {
+    function returnAllTokensPayrollRunway() onlyOwnerOrOraclize returns (uint) {
+        
+        if (!calculateAllTokensRunwayInProgress) {
+            revert();
+        }
         
         if (allTokensETHinProgress) {
             allTokensETHinProgress = false;
-            uint256 contractBalanceInEuroETH = this.balance * exchangeRatesTokens[tokenAt2];
+            uint256 contractBalanceInEuroETH = this.balance * exchangeRatesTokens[tokenAt];
             totalEURBalanceAllTokens = totalEURBalanceAllTokens + contractBalanceInEuroETH;
         } else {
-            // uint256 tokenBalance = ExternalToken(allTokenAddresses[tokenAt2]).balanceOf(address(this));
-            uint256 contractBalanceInEuroERC20Token = tokenBalances[tokenAt2] * exchangeRatesTokens[tokenAt2];
+            // uint256 tokenBalance = ExternalToken(allTokenAddresses[tokenAt]).balanceOf(address(this));
+            uint256 contractBalanceInEuroERC20Token = tokenBalances[tokenAt] * exchangeRatesTokens[tokenAt];
             totalEURBalanceAllTokens = totalEURBalanceAllTokens + contractBalanceInEuroERC20Token;
         }
         
-        if (tokenAt2 == allTokenAddresses.length - 1) {
+        if (tokenAt == allTokenAddresses.length - 1) {
             // done for all tokens
+            PayrollRunwayIncludingAllTokensCompleted;
             calculateAllTokensRunwayInProgress = false;
             uint256 totalDailySalaries = totalYearlySalaries/365;
-            latestAllTokensPayrollRunway = totalEURBalanceAllTokens/totalDailySalaries;
+            latestAllTokensPayrollRunway = (totalEURBalanceAllTokens/totalDailySalaries)/10**18;
             totalEURBalanceAllTokens = 0;
+            return latestAllTokensPayrollRunway;
         } else {
-            tokenAt2++;
+            tokenAt++;
         }
-        // return latestAllTokensPayrollRunway;
     }
     
     
@@ -262,6 +266,7 @@ contract PayrollInterface is usingOraclize {
         employees[employeeId].lastAllocationChangeTime = now;
     } 
 
+    // when an employee wants to get paid the current exchange rate of their tokens needs to be calculated on the spot
     function payday (uint256 employeeId) {
         // only callable once a month 
         if (isPaused) {
@@ -310,14 +315,13 @@ contract PayrollInterface is usingOraclize {
             calculateETHRunwayInProgress = false;
             returnETHPayrollRunway();
         } else if (calculateAllTokensRunwayInProgress) {
-            // calculateAllTokensRunwayInProgress = false;
-            // exchangeRatesTokens.push(latestExchangeRate);
-            exchangeRatesTokens[tokenAt2] = latestExchangeRate;
+            exchangeRatesTokens[tokenAt] = latestExchangeRate;
             returnAllTokensPayrollRunway();
         }
         
     }
     
+    // can easily have this also take parameters to wait a certain amount of time or use a certain amount of gas
     function setExchangeRate (string symbol) payable onlyOwnerOrOraclize {
         // the symbol parameter will be the token symbol like ETH, BTC, LTC. Then this will find the value of that token in Euro's.
         if (oraclize_getPrice("URL") > this.balance) {
