@@ -205,7 +205,7 @@ contract PayrollInterface is usingOraclize {
             } else {
                 tokenBalances[tokenAt] = this.balance;
                 allTokensETHinProgress = true;
-                oraclize_query(30 * tokenAt, "URL", "json(https://api.kraken.com/0/public/Ticker?pair=ETHEUR).result.XETHXXBT.c.0", 500000);
+                oraclize_query(30 * tokenAt, "URL", strConcat("json(https://api.kraken.com/0/public/Ticker?pair=ETHEUR).result.XETHZEUR.c.0"), 500000);
             }
         }
     }
