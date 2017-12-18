@@ -237,7 +237,10 @@ contract PayrollInterface is usingOraclize {
         }
     }
     
-    function calculateExchanges() payable onlyOwner {
+    // calculateExchanges() and calculateBalances() functions may be called by the account of an employee when they want to get paid, since before paying an employee the payday() function checks if the exchange rates and contract balances are recent enough - so take an employeeId parameter and check if the msg.sender is an employee or the owner of the contract
+    
+    function calculateExchanges(uint256 employeeId) payable {
+        require(employees[employeeId].accountAddress == msg.sender || msg.sender == owner);
         ordinaryExchangeCalculation = true;
         for (ordinaryExchangeTokenAt = 0; ordinaryExchangeTokenAt < allTokenAddresses.length; ordinaryExchangeTokenAt++) {
             if (allTokenAddresses[ordinaryExchangeTokenAt] != address(this)) {
@@ -251,7 +254,8 @@ contract PayrollInterface is usingOraclize {
         }
     }
     
-    function calculateBalances() payable onlyOwner {
+    function calculateBalances(uint256 employeeId) payable {
+        require(employees[employeeId].accountAddress == msg.sender || msg.sender == owner);
         for (uint i = 0; i < allTokenAddresses.length; i++) {
             if (allTokenAddresses[i] != address(this)) {
                 // ERC20 token other than ETH
@@ -260,7 +264,6 @@ contract PayrollInterface is usingOraclize {
                 tokenBalances[i] = this.balance;
             }
         }
-        // would take a few seconds for the token contracts to return the balance, so balancesLastCalculated won't be exact, but that's not too important here
         balancesLastCalculated = now;
     }
     
@@ -299,7 +302,7 @@ contract PayrollInterface is usingOraclize {
             calculateExchanges();
             revert();
         }
-        if (now > balancesLastCalculated + 6 hours) {
+        if (now > balancesLastCalculated + 1 hours) {
             calculateBalances();
             revert();
         }
