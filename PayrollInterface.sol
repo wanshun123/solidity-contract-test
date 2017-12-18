@@ -72,7 +72,7 @@ contract PayrollInterface is usingOraclize {
             if (newAllowedTokenAddresses[i] == address(this)) {
                 // one of the tokens is ETH, fine, move on
             } else {
-                // try calling totalSupply() which is a required ERC20 token function, could also try calling some other ERC20 functions and oraclize to see if kraken has an exchange rate for the symbol (that would take the symbol from the _allTokenSymbols[] array). ExternalToken is the interface defined at the top. Of course just having a totalSupply() function doesn't guarantee it's a valid ERC20 token but it's good enough for this example. This will be required for the token address to be accepted. 
+                // try calling totalSupply() which is a required ERC20 token function, could also try calling some other ERC20 functions (like balanceOf() for this contract, and update it) and oraclize to see if kraken has an exchange rate for the symbol (that would take the symbol from the _allTokenSymbols[] array). ExternalToken is the interface defined at the top. Of course just having a totalSupply() function doesn't guarantee it's a valid ERC20 token but it's good enough for this example. This will be required for the token address to be accepted. 
                 uint256 totalSupplyTest = ExternalToken(newAllowedTokenAddresses[i]).totalSupply();
                 require(totalSupplyTest > 0);
             }
@@ -190,6 +190,7 @@ contract PayrollInterface is usingOraclize {
         // this will calculate the value in Euro's of any other tokens in the allTokenSymbols[] array the contract may own, in addition to ETH - then compare the value of all that to the salary in Euro of all employees. Will take some time as it has to query kraken for the exchange rate of each token
         // as with the calculateETHPayrollRunway() function, this is split into 2 functions, one to query oraclize and then one to process the result
         calculateAllTokensRunwayInProgress = true;
+        totalEURBalanceAllTokens = 0; // resetting this as it'll be calculated again
         for (uint i = 0; i < allTokenAddresses.length; i++) {
             if (allTokenAddresses[i] != address(this)) {
                 // ERC20 token other than ETH. Get the token symbol and query kraken to see the value of this token in Euro's, then returnAllTokensPayrollRunway() below will be callsed which finds the how many tokens this contract owns and their value in Euro's
@@ -230,7 +231,6 @@ contract PayrollInterface is usingOraclize {
             calculateAllTokensRunwayInProgress = false;
             uint256 totalDailySalaries = totalYearlySalaries/365;
             latestAllTokensPayrollRunway = (totalEURBalanceAllTokens/totalDailySalaries)/10**18;
-            totalEURBalanceAllTokens = 0;
             return latestAllTokensPayrollRunway;
         } else {
             tokenAt++;
