@@ -292,18 +292,18 @@ contract PayrollInterface is usingOraclize {
     bool public ordinaryExchangeCalculation;
     uint public ordinaryExchangeTokenAt;
 
-    // when an employee is to be paid in different tokens according to their annual salary in Euro's, there should be a recent exchange rate to ensure they're paid accurately, in this case it's required that the exchange rate was found in the last 6 hours - also want to confirm the contract has enough tokens to pay them
+    // when an employee is to be paid in different tokens according to their annual salary in Euro's, there should be a recent exchange rate to ensure they're paid accurately, in this case it's required that the exchange rate was updated recently - also want to confirm the contract has enough tokens to pay them
     function payday (uint256 employeeId) {
         // only callable once a month 
         if (isPaused) {
             revert();
         }
-        if (now > exchangeRatesLastCalculated + 6 hours) {
-            calculateExchanges();
+        if (now > exchangeRatesLastCalculated + 10 minutes) {
+            calculateExchanges(employeeId);
             revert();
         }
-        if (now > balancesLastCalculated + 1 hours) {
-            calculateBalances();
+        if (now > balancesLastCalculated + 10 minutes) {
+            calculateBalances(employeeId);
             revert();
         }
         require(employees[employeeId].accountAddress == msg.sender);
