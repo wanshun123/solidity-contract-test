@@ -15,12 +15,6 @@ contract PayrollInterface is usingOraclize {
     uint public numberOfDeletedEmployees;
     uint public totalYearlySalaries;
     
-    uint public testingg;
-    function testing() returns (uint256) {
-        testingg = ExternalToken(allTokenAddresses[1]).totalSupply();
-        return ExternalToken(allTokenAddresses[1]).totalSupply();
-    }
-
     function PayrollInterface() {
         oraclize_setProof(proofType_TLSNotary | proofStorage_IPFS);
         owner = msg.sender;
@@ -42,10 +36,10 @@ contract PayrollInterface is usingOraclize {
     
     mapping (uint => Employee) private employees;
     
-    // if the contract allowed an employee to set any token contract address to be paid in there would be all kinds of issues (would have to validate if the contract address is for a legitimate ERC20 token, whether there is an exchange rate for it in Kraken, and whether those tokens can even be brought etc), for practical purposes there should just be a small list of token contract addresses set by the owner that are allowed to be used, then when setting how an employee is paid a simple distrubution[] array is kept that says what percent of employees pay goes to each token. For this example setting a max of 3 tokens
+    // if the contract allowed an employee to set any token contract address to be paid in there would be all kinds of issues (would have to validate if the contract address is for a legitimate ERC20 token, whether there is an exchange rate for it in Kraken, and whether those tokens can even be obtained etc), for practical purposes there should just be a small list of token contract addresses set by the owner that are allowed to be used, then when setting how an employee is paid a simple distrubution[] array is kept that says what percent of employees pay goes to each token. For this example setting a max of 3 tokens
     // ETH itself doesn't have a token contract address, for that this contract address can be entered, ie. address(this)
     
-    // for testing purposes allTokenAddresses[1] and allTokenAddresses[2] are token addresses for tokens called LTC and XRP that I've deployed on rinkeby using icocompiler.com
+    // for testing purposes allTokenAddresses[1] and allTokenAddresses[2] are token addresses for tokens called LTC and XMR that I've deployed on rinkeby using icocompiler.com
     address[] public allTokenAddresses = [address(this), 0x0a6ebb3690b7983e470D3aBFB86636cf64925B98, 0xAeCbB7a5017587046D55dc68928544B81c1A3b35];
     
     // the bytes32[] array below is "ETH", "LTC" and "XMR" in bytes32, as commented below Solidity doesn't allow an array of strings so it has to be like this then converted to a string when needed
@@ -189,6 +183,9 @@ contract PayrollInterface is usingOraclize {
     mapping (uint => uint) public exchangeRatesTokens;
     mapping (uint => uint) public tokenBalances;
     
+    uint exchangeRatesLastCalculated;
+    uint balancesLastCalculated;
+    
     function calculatePayrollRunwayIncludingAllTokens() payable onlyOwner {
         // this will calculate the value in Euro's of any other tokens in the allTokenSymbols[] array the contract may own, in addition to ETH - then compare the value of all that to the salary in Euro of all employees. Will take some time as it has to query kraken for the exchange rate of each token
         // as with the calculateETHPayrollRunway() function, this is split into 2 functions, one to query oraclize and then one to process the result
@@ -196,21 +193,20 @@ contract PayrollInterface is usingOraclize {
         for (uint i = 0; i < allTokenAddresses.length; i++) {
             if (allTokenAddresses[i] != address(this)) {
                 // ERC20 token other than ETH. Get the token symbol and query kraken to see the value of this token in Euro's, then returnAllTokensPayrollRunway() below will be callsed which finds the how many tokens this contract owns and their value in Euro's
-                // queries executed 30 seconds apart
+                // queries executed 10 seconds apart
                 tokenBalances[i] = ExternalToken(allTokenAddresses[i]).balanceOf(address(this));
                 string memory token = bytes32ToString(allTokenSymbols[i]);
                 // setExchangeRate(token);
-                oraclize_query(30 * i, "URL", strConcat("json(https://api.kraken.com/0/public/Ticker?pair=", token,"EUR).result.X", token,"ZEUR.c.0"));
+                oraclize_query(10 * i, "URL", strConcat("json(https://api.kraken.com/0/public/Ticker?pair=", token,"EUR).result.X", token,"ZEUR.c.0"));
             } else {
                 tokenBalances[i] = this.balance;
                 allTokensETHinProgress = true;
-                oraclize_query(30 * i, "URL", "json(https://api.kraken.com/0/public/Ticker?pair=ETHEUR).result.XETHZEUR.c.0");
+                oraclize_query(10 * i, "URL", "json(https://api.kraken.com/0/public/Ticker?pair=ETHEUR).result.XETHZEUR.c.0");
             }
         }
     }
     
-    uint public testingyall = allTokenAddresses.length;
-    
+    // called by calculatePayrollRunwayIncludingAllTokens() (after oraclize is done getting an exchange rate) and updates latestAllTokensPayrollRunway with the total value of all tokens this contract holds divided by the cost of daily wages
     function returnAllTokensPayrollRunway() onlyOwnerOrOraclize returns (uint) {
         
         if (!calculateAllTokensRunwayInProgress) {
@@ -230,6 +226,7 @@ contract PayrollInterface is usingOraclize {
         if (tokenAt == allTokenAddresses.length - 1) {
             // done for all tokens
             PayrollRunwayIncludingAllTokensCompleted;
+            exchangeRatesLastCalculated = now;
             calculateAllTokensRunwayInProgress = false;
             uint256 totalDailySalaries = totalYearlySalaries/365;
             latestAllTokensPayrollRunway = (totalEURBalanceAllTokens/totalDailySalaries)/10**18;
@@ -240,14 +237,37 @@ contract PayrollInterface is usingOraclize {
         }
     }
     
+    function calculateExchanges() payable onlyOwner {
+        ordinaryExchangeCalculation = true;
+        for (ordinaryExchangeTokenAt = 0; ordinaryExchangeTokenAt < allTokenAddresses.length; ordinaryExchangeTokenAt++) {
+            if (allTokenAddresses[ordinaryExchangeTokenAt] != address(this)) {
+                // ERC20 token other than ETH
+                // queries executed 10 seconds apart
+                string memory token = bytes32ToString(allTokenSymbols[ordinaryExchangeTokenAt]);
+                oraclize_query(10 * ordinaryExchangeTokenAt, "URL", strConcat("json(https://api.kraken.com/0/public/Ticker?pair=", token,"EUR).result.X", token,"ZEUR.c.0"));
+            } else {
+                oraclize_query(10 * ordinaryExchangeTokenAt, "URL", "json(https://api.kraken.com/0/public/Ticker?pair=ETHEUR).result.XETHZEUR.c.0");
+            }
+        }
+    }
     
-    
-    
+    function calculateBalances() payable onlyOwner {
+        for (uint i = 0; i < allTokenAddresses.length; i++) {
+            if (allTokenAddresses[i] != address(this)) {
+                // ERC20 token other than ETH
+                tokenBalances[i] = ExternalToken(allTokenAddresses[i]).balanceOf(address(this));
+            } else {
+                tokenBalances[i] = this.balance;
+            }
+        }
+        // would take a few seconds for the token contracts to return the balance, so balancesLastCalculated won't be exact, but that's not too important here
+        balancesLastCalculated = now;
+    }
     
     /* EMPLOYEE ONLY */ 
     
     function retreiveAllocation (uint256 employeeId) returns (address[], uint256[]) {
-        // have a function to let the employee verify their current token allocation, since the getEmployee function can only be called by the contract owner (per project requirements).
+        // have a function to let the employee verify their current token allocation and the addresses of the tokens the contract handles, since the getEmployee function can only be called by the contract owner (per project requirements).
         require(employees[employeeId].accountAddress == msg.sender);
         return (allTokenAddresses, employees[employeeId].distribution);
     }
@@ -265,30 +285,41 @@ contract PayrollInterface is usingOraclize {
         employees[employeeId].distribution = distribution;
         employees[employeeId].lastAllocationChangeTime = now;
     } 
+    
+    bool public ordinaryExchangeCalculation;
+    uint public ordinaryExchangeTokenAt;
 
-    // when an employee wants to get paid the current exchange rate of their tokens needs to be calculated on the spot
+    // when an employee is to be paid in different tokens according to their annual salary in Euro's, there should be a recent exchange rate to ensure they're paid accurately, in this case it's required that the exchange rate was found in the last 6 hours - also want to confirm the contract has enough tokens to pay them
     function payday (uint256 employeeId) {
         // only callable once a month 
         if (isPaused) {
             revert();
         }
+        if (now > exchangeRatesLastCalculated + 6 hours) {
+            calculateExchanges();
+            revert();
+        }
+        if (now > balancesLastCalculated + 6 hours) {
+            calculateBalances();
+            revert();
+        }
         require(employees[employeeId].accountAddress == msg.sender);
         require(now > employees[employeeId].lastPaidTime + 30 days);
-        uint256 employeeSalary = employees[employeeId].yearlyEURSalary;
+        uint256 employeeSalary = employees[employeeId].yearlyEURSalary/12;
         for (uint i = 0; i < allTokenAddresses.length; i++) {
             uint256 distribution = employees[employeeId].distribution[i];
             uint256 valueOfTokenInEuro = (employeeSalary * distribution)/100;
             if (allTokenAddresses[i] == address(this)) {
                 // ETH
-                setExchangeRate('ETH');
-                uint256 amountOfETHToTransfer = valueOfTokenInEuro / latestExchangeRate;
+                uint256 amountOfETHToTransfer = valueOfTokenInEuro / exchangeRatesTokens[i];
+                require(this.balance > amountOfETHToTransfer);
                 msg.sender.transfer(amountOfETHToTransfer);
             } else {
-                // ERC20 token. Similar to the calculatePayrollRunwayIncludingAllTokens(), get the token symbol and the exchange rate of the tokens in Euro's. Then call the transfer() function in that token contract to send the right amount of tokens to the employee
+                // ERC20 token
                 bytes32 tokenBytes32 = allTokenSymbols[i];
                 string memory tokenString = bytes32ToString(tokenBytes32);
-                setExchangeRate(tokenString);
-                uint256 amountOfTokenToTransfer = valueOfTokenInEuro / latestExchangeRate;
+                uint256 amountOfTokenToTransfer = valueOfTokenInEuro / exchangeRatesTokens[i];
+                require(tokenBalances[i] > amountOfTokenToTransfer);
                 ExternalToken(allTokenAddresses[i]).transfer(msg.sender, amountOfTokenToTransfer);
             }
         }
@@ -317,6 +348,12 @@ contract PayrollInterface is usingOraclize {
         } else if (calculateAllTokensRunwayInProgress) {
             exchangeRatesTokens[tokenAt] = latestExchangeRate;
             returnAllTokensPayrollRunway();
+        } else if (ordinaryExchangeCalculation) {
+            ordinaryExchangeCalculation = false;
+            exchangeRatesTokens[ordinaryExchangeTokenAt] = latestExchangeRate;
+            if (ordinaryExchangeTokenAt == allTokenAddresses.length - 1) {
+                exchangeRatesLastCalculated = now;
+            }
         }
         
     }
