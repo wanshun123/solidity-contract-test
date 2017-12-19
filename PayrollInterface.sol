@@ -70,11 +70,14 @@ contract PayrollInterface is usingOraclize {
         // check if these token addresses are legit ERC20 tokens
         for (uint i = 0; i < newAllowedTokenAddresses.length; i++) {
             if (newAllowedTokenAddresses[i] == address(this)) {
-                // one of the tokens is ETH, fine, move on
+                // one of the tokens is ETH, fine, move on, just update tokenBalances[]
+                tokenBalances[i] = this.balance;
             } else {
-                // try calling totalSupply() which is a required ERC20 token function, could also try calling some other ERC20 functions (like balanceOf() for this contract, and update it) and oraclize to see if kraken has an exchange rate for the symbol (that would take the symbol from the _allTokenSymbols[] array). ExternalToken is the interface defined at the top. Of course just having a totalSupply() function doesn't guarantee it's a valid ERC20 token but it's good enough for this example. This will be required for the token address to be accepted. 
+                // try calling totalSupply() which is a required ERC20 token function, could also try calling oraclize to see if kraken has an exchange rate for the symbol (that would take the symbol from the _allTokenSymbols[] array). ExternalToken is the interface defined at the top. This will be required for the token address to be accepted. 
                 uint256 totalSupplyTest = ExternalToken(newAllowedTokenAddresses[i]).totalSupply();
                 require(totalSupplyTest > 0);
+                // should also get this contracts balance of the new token, otherwise tokenBalances[] will be all wrong with numbers for the old tokens
+                tokenBalances[i] = ExternalToken(allTokenAddresses[i]).balanceOf(address(this));
             }
         }
         allTokenAddresses = newAllowedTokenAddresses;
