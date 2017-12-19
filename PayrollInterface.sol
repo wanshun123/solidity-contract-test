@@ -164,10 +164,14 @@ contract PayrollInterface is usingOraclize {
     } 
     
     function returnETHPayrollRunway() onlyOwnerOrOraclize returns (uint256) {
+        if (!calculateETHRunwayInProgress) {
+            revert();
+        }
         uint256 totalDailySalaries = totalYearlySalaries/365;
         uint256 contractBalanceInEuro = this.balance * latestExchangeRate;
         // a this.balance of 1 Ether would return 1 * 10^18
         latestETHPayrollRunway = (contractBalanceInEuro/totalDailySalaries)/10**18;
+        calculateETHRunwayInProgress = false;
         return latestETHPayrollRunway;
     }
     
@@ -193,7 +197,7 @@ contract PayrollInterface is usingOraclize {
         totalEURBalanceAllTokens = 0; // resetting this as it'll be calculated again
         for (uint i = 0; i < allTokenAddresses.length; i++) {
             if (allTokenAddresses[i] != address(this)) {
-                // ERC20 token other than ETH. Get the token symbol and query kraken to see the value of this token in Euro's, then returnAllTokensPayrollRunway() below will be callsed which finds the how many tokens this contract owns and their value in Euro's
+                // ERC20 token other than ETH. Get the token symbol and query kraken to see the value of this token in Euro's, then returnAllTokensPayrollRunway() below will be called which finds the how many tokens this contract owns and their value in Euro's
                 // queries executed 10 seconds apart
                 tokenBalances[i] = ExternalToken(allTokenAddresses[i]).balanceOf(address(this));
                 string memory token = bytes32ToString(allTokenSymbols[i]);
@@ -228,6 +232,7 @@ contract PayrollInterface is usingOraclize {
             // done for all tokens
             PayrollRunwayIncludingAllTokensCompleted;
             exchangeRatesLastCalculated = now;
+            balancesLastCalculated = now;
             calculateAllTokensRunwayInProgress = false;
             uint256 totalDailySalaries = totalYearlySalaries/365;
             latestAllTokensPayrollRunway = (totalEURBalanceAllTokens/totalDailySalaries)/10**18;
@@ -346,7 +351,6 @@ contract PayrollInterface is usingOraclize {
         newOraclizeQuery("Result returned");
         
         if (calculateETHRunwayInProgress) {
-            calculateETHRunwayInProgress = false;
             returnETHPayrollRunway();
         } else if (calculateAllTokensRunwayInProgress) {
             exchangeRatesTokens[tokenAt] = latestExchangeRate;
@@ -354,9 +358,12 @@ contract PayrollInterface is usingOraclize {
         } else if (ordinaryExchangeCalculation) {
             ordinaryExchangeCalculation = false;
             exchangeRatesTokens[ordinaryExchangeTokenAt] = latestExchangeRate;
+            exchangeRatesLastCalculated = now;
+            /*
             if (ordinaryExchangeTokenAt == allTokenAddresses.length - 1) {
                 exchangeRatesLastCalculated = now;
             }
+            */
         }
         
     }
