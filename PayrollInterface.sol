@@ -307,11 +307,11 @@ contract PayrollInterface is usingOraclize {
             revert();
         }
         
-        if (now > exchangeRatesLastCalculated + 100 minutes) {
+        if (now > exchangeRatesLastCalculated + 10 minutes) {
             calculateExchanges(employeeId);
             revert();
         }
-        if (now > balancesLastCalculated + 100 minutes) {
+        if (now > balancesLastCalculated + 10 minutes) {
             calculateBalances(employeeId);
             revert();
         }
@@ -321,20 +321,20 @@ contract PayrollInterface is usingOraclize {
         uint256 employeeSalary = employees[employeeId].yearlyEURSalary/12;
         for (uint i = 0; i < allTokenAddresses.length; i++) {
             uint256 distribution = employees[employeeId].distribution[i];
-            uint256 valueOfTokenInEuro = (employeeSalary * distribution)/100;
+            uint256 valueOfTokenInEuro = (employeeSalary * distribution * 10**18)/100;
             if (valueOfTokenInEuro != 0) {
                 if (allTokenAddresses[i] == address(this)) {
                 // ETH
-                uint256 amountOfETHToTransfer = (valueOfTokenInEuro * 10**18) / exchangeRatesTokens[i];
+                uint256 amountOfETHToTransfer = valueOfTokenInEuro / exchangeRatesTokens[i];
                 require(this.balance > amountOfETHToTransfer);
                 msg.sender.transfer(amountOfETHToTransfer);
             } else {
                 // ERC20 token
                 // bytes32 tokenBytes32 = allTokenSymbols[i];
                 // string memory tokenString = bytes32ToString(tokenBytes32);
-                uint256 amountOfTokenToTransfer = (valueOfTokenInEuro * 10**18) / exchangeRatesTokens[i];
+                uint256 amountOfTokenToTransfer = valueOfTokenInEuro / exchangeRatesTokens[i];
                 require(tokenBalances[i] > amountOfTokenToTransfer);
-                // ExternalToken(allTokenAddresses[i]).transfer(msg.sender, amountOfTokenToTransfer);
+                ExternalToken(allTokenAddresses[i]).transfer(msg.sender, amountOfTokenToTransfer);
             }
         }
         }
