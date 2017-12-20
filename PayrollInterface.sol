@@ -190,8 +190,8 @@ contract PayrollInterface is usingOraclize {
     mapping (uint => uint) public exchangeRatesTokens;
     mapping (uint => uint) public tokenBalances;
     
-    uint exchangeRatesLastCalculated;
-    uint balancesLastCalculated;
+    uint public exchangeRatesLastCalculated;
+    uint public balancesLastCalculated;
     
     function calculatePayrollRunwayIncludingAllTokens() payable onlyOwner {
         // this will calculate the value in Euro's of any other tokens in the allTokenSymbols[] array the contract may own, in addition to ETH - then compare the value of all that to the salary in Euro of all employees. Will take some time as it has to query kraken for the exchange rate of each token
@@ -247,17 +247,20 @@ contract PayrollInterface is usingOraclize {
     
     // calculateExchanges() and calculateBalances() functions may be called by the account of an employee when they want to get paid, since before paying an employee the payday() function checks if the exchange rates and contract balances are recent enough - so take an employeeId parameter and check if the msg.sender is an employee or the owner of the contract
     
+    bool public ordinaryExchangeCalculation;
+    uint public ordinaryExchangeTokenAt;
+    
     function calculateExchanges(uint256 employeeId) payable {
         require(employees[employeeId].accountAddress == msg.sender || msg.sender == owner);
         ordinaryExchangeCalculation = true;
-        for (ordinaryExchangeTokenAt = 0; ordinaryExchangeTokenAt < allTokenAddresses.length; ordinaryExchangeTokenAt++) {
-            if (allTokenAddresses[ordinaryExchangeTokenAt] != address(this)) {
+        for (uint i = 0; i < allTokenAddresses.length; i++) {
+            if (allTokenAddresses[i] != address(this)) {
                 // ERC20 token other than ETH
                 // queries executed 10 seconds apart
-                string memory token = bytes32ToString(allTokenSymbols[ordinaryExchangeTokenAt]);
-                oraclize_query(10 * ordinaryExchangeTokenAt, "URL", strConcat("json(https://api.kraken.com/0/public/Ticker?pair=", token,"EUR).result.X", token,"ZEUR.c.0"));
+                string memory token = bytes32ToString(allTokenSymbols[i]);
+                oraclize_query(10 * i, "URL", strConcat("json(https://api.kraken.com/0/public/Ticker?pair=", token,"EUR).result.X", token,"ZEUR.c.0"));
             } else {
-                oraclize_query(10 * ordinaryExchangeTokenAt, "URL", "json(https://api.kraken.com/0/public/Ticker?pair=ETHEUR).result.XETHZEUR.c.0");
+                oraclize_query(10 * i, "URL", "json(https://api.kraken.com/0/public/Ticker?pair=ETHEUR).result.XETHZEUR.c.0");
             }
         }
     }
@@ -296,9 +299,6 @@ contract PayrollInterface is usingOraclize {
         employees[employeeId].distribution = distribution;
         employees[employeeId].lastAllocationChangeTime = now;
     } 
-    
-    bool public ordinaryExchangeCalculation;
-    uint public ordinaryExchangeTokenAt;
 
     // when an employee is to be paid in different tokens according to their annual salary in Euro's, there should be a recent exchange rate to ensure they're paid accurately, in this case it's required that the exchange rate was updated recently - also want to confirm the contract has enough tokens to pay them
     function payday (uint256 employeeId) {
@@ -306,33 +306,37 @@ contract PayrollInterface is usingOraclize {
         if (isPaused) {
             revert();
         }
-        if (now > exchangeRatesLastCalculated + 10 minutes) {
+        
+        if (now > exchangeRatesLastCalculated + 100 minutes) {
             calculateExchanges(employeeId);
             revert();
         }
-        if (now > balancesLastCalculated + 10 minutes) {
+        if (now > balancesLastCalculated + 100 minutes) {
             calculateBalances(employeeId);
             revert();
         }
+        
         require(employees[employeeId].accountAddress == msg.sender);
         require(now > employees[employeeId].lastPaidTime + 30 days);
         uint256 employeeSalary = employees[employeeId].yearlyEURSalary/12;
         for (uint i = 0; i < allTokenAddresses.length; i++) {
             uint256 distribution = employees[employeeId].distribution[i];
             uint256 valueOfTokenInEuro = (employeeSalary * distribution)/100;
-            if (allTokenAddresses[i] == address(this)) {
+            if (valueOfTokenInEuro != 0) {
+                if (allTokenAddresses[i] == address(this)) {
                 // ETH
-                uint256 amountOfETHToTransfer = valueOfTokenInEuro / exchangeRatesTokens[i];
+                uint256 amountOfETHToTransfer = (valueOfTokenInEuro * 10**18) / exchangeRatesTokens[i];
                 require(this.balance > amountOfETHToTransfer);
                 msg.sender.transfer(amountOfETHToTransfer);
             } else {
                 // ERC20 token
-                bytes32 tokenBytes32 = allTokenSymbols[i];
-                string memory tokenString = bytes32ToString(tokenBytes32);
-                uint256 amountOfTokenToTransfer = valueOfTokenInEuro / exchangeRatesTokens[i];
+                // bytes32 tokenBytes32 = allTokenSymbols[i];
+                // string memory tokenString = bytes32ToString(tokenBytes32);
+                uint256 amountOfTokenToTransfer = (valueOfTokenInEuro * 10**18) / exchangeRatesTokens[i];
                 require(tokenBalances[i] > amountOfTokenToTransfer);
-                ExternalToken(allTokenAddresses[i]).transfer(msg.sender, amountOfTokenToTransfer);
+                // ExternalToken(allTokenAddresses[i]).transfer(msg.sender, amountOfTokenToTransfer);
             }
+        }
         }
         employees[employeeId].lastPaidTime = now;
     }
@@ -359,16 +363,14 @@ contract PayrollInterface is usingOraclize {
             exchangeRatesTokens[tokenAt] = latestExchangeRate;
             returnAllTokensPayrollRunway();
         } else if (ordinaryExchangeCalculation) {
-            ordinaryExchangeCalculation = false;
             exchangeRatesTokens[ordinaryExchangeTokenAt] = latestExchangeRate;
-            exchangeRatesLastCalculated = now;
-            /*
             if (ordinaryExchangeTokenAt == allTokenAddresses.length - 1) {
                 exchangeRatesLastCalculated = now;
+                ordinaryExchangeCalculation = false;
+            } else {
+                ordinaryExchangeTokenAt++;
             }
-            */
         }
-        
     }
     
     // can easily have this also take parameters to wait a certain amount of time or use a certain amount of gas
